@@ -26,10 +26,15 @@ by calling one endpoint with parameters.
 | `all`        | boolean | one of module/url/all | Fetch every module across all pillars for the release |
 | `max_pages`  | integer | no       | Max pages to follow per module (default 60, max 200)               |
 
+All endpoints except `/health` require HTTP Basic Auth (default `admin` / `admin`,
+overridable via the `API_USERNAME` / `API_PASSWORD` environment variables — see
+[Authentication](#authentication) below).
+
 Example:
 
 ```
 GET https://<your-app>.onrender.com/generate?release=26b&module=inventory
+Authorization: Basic base64(admin:admin)
 ```
 
 ```json
@@ -62,7 +67,23 @@ Then open http://localhost:8000/docs to try it in the browser.
 Notes:
 - Generated `.xlsx` files are written to an on-disk `generated/` folder. Render's free tier disk is ephemeral (wiped on redeploy/restart) — files are meant to be downloaded shortly after generation, not archived long-term.
 - Free tier instances spin down after inactivity and take ~30-60s to wake on the next request — the first call after idle time will be slow.
-- No authentication is enabled on this deployment. If this API will hold real data or be exposed long-term, add an API key check (e.g. a `X-API-Key` header validated against an environment variable) before relying on it in production.
+- Set `API_USERNAME` / `API_PASSWORD` as environment variables in the Render dashboard (Settings → Environment) to change the default `admin` / `admin` credentials.
+
+## Authentication
+
+Every endpoint except `/health` requires HTTP Basic Auth. Default credentials are
+`admin` / `admin` (matches the request this was built for) — override them by
+setting the `API_USERNAME` and `API_PASSWORD` environment variables (locally via
+a `.env`/shell export, on Render via Settings → Environment).
+
+```bash
+curl -u admin:admin "https://<your-app>.onrender.com/generate?release=26b&module=inventory"
+```
+
+`admin`/`admin` over the public internet is not a strong credential — treat this
+as a placeholder to unblock Agent Studio integration, and rotate to a real
+password (or switch to an API-key/OAuth scheme) before this handles anything
+sensitive.
 
 ## Wiring into Oracle Fusion AI Agent Studio
 
@@ -70,6 +91,7 @@ In Agent Studio, define a new REST tool/function pointing at:
 
 - **Base URL**: your Render service URL (e.g. `https://oracle-patch-notes-api.onrender.com`)
 - **Operation**: `GET /generate`
+- **Auth**: HTTP Basic, username/password as configured above
 - **Parameters**: `release` (string, required), and one of `module` (string), `url` (string), or `all` (boolean)
 - **Response**: JSON — map `download_url` (and optionally `total_features`, `modules_processed`) into whatever the agent surfaces back to the user
 

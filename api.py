@@ -8,12 +8,14 @@ passing parameters and get back a link to the generated Excel workbook.
 
 import os
 import re
+import secrets
 import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from openpyxl import Workbook
 
 from oracle_patch_notes_to_excel import (
@@ -28,6 +30,24 @@ OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", "generated"))
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 FILE_NAME_RE = re.compile(r"[\w\-.]+\.xlsx")
+
+API_USERNAME = os.environ.get("API_USERNAME", "admin")
+API_PASSWORD = os.environ.get("API_PASSWORD", "admin")
+
+security = HTTPBasic()
+
+
+def require_auth(credentials: HTTPBasicCredentials = Depends(security)):
+    valid_user = secrets.compare_digest(credentials.username, API_USERNAME)
+    valid_pass = secrets.compare_digest(credentials.password, API_PASSWORD)
+    if not (valid_user and valid_pass):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
 
 app = FastAPI(
     title="Oracle Patch Notes to Excel API",
@@ -45,7 +65,7 @@ def health():
 
 
 @app.get("/modules")
-def list_modules():
+def list_modules(_: str = Depends(require_auth)):
     """Known module names usable with the `module` parameter, e.g. 'inventory', 'payroll'."""
     return {"modules": sorted(MODULE_NAME_MAP.keys())}
 
@@ -53,6 +73,7 @@ def list_modules():
 @app.get("/generate")
 def generate(
     request: Request,
+    _: str = Depends(require_auth),
     release: str = Query(..., description="Release code, e.g. 26b, 26a"),
     module: Optional[str] = Query(None, description="Known module name — see GET /modules"),
     url: Optional[str] = Query(None, description="Explicit module index URL path, e.g. scm/26b/mfg26b/index.html"),
@@ -117,7 +138,7 @@ def generate(
 
 
 @app.get("/download/{file_name}")
-def download(file_name: str):
+def download(file_name: str, _: str = Depends(require_auth)):
     if not FILE_NAME_RE.fullmatch(file_name):
         raise HTTPException(400, "Invalid file name")
     path = OUTPUT_DIR / file_name
