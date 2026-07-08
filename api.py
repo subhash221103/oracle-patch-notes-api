@@ -64,6 +64,12 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/")
+def root(_: str = Depends(require_auth)):
+    """Auth-gated root route — connection-test pings from external tools land here."""
+    return {"service": "oracle-patch-notes-api", "status": "ok"}
+
+
 @app.get("/modules")
 def list_modules(_: str = Depends(require_auth)):
     """Known module names usable with the `module` parameter, e.g. 'inventory', 'payroll'."""
